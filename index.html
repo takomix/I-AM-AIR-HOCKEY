@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>シンプルエアホッケー</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #fff;
+            font-family: "toppan-bunkyu-midashi-go-std", sans-serif;
+            font-weight: 900;
+            font-style: normal;
+        }
+        #c {
+            border: 2px solid #000;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        #s {
+            font-size: 20px;
+            margin-bottom: 10px;
+            order: -2; /* スコアを一番上に移動 */
+        }
+        #go {
+            font-size: 24px;
+            position: relative;
+            padding: 15px 0; /* 上下のpaddingを調整 */
+            text-align: center;
+            order: -1; /* メッセージをスコアの下、キャンバスの上に移動 */
+            margin-bottom: 15px; /* 下のmarginを追加してスペースを作る */
+            min-height: 55px; /* メッセージ領域の最小の高さを設定 (フォントサイズやpaddingに合わせて調整) */
+        }
+        #pm {
+            font-size: 24px;
+            color: #000;
+            margin-top: 20px;
+            display: none;
+        }
+        #speedControl {
+            display: flex;
+            align-items: center;
+            margin-top: 10px; /* 上のmarginを調整 */
+        }
+        #speedLabel {
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        #speedInput {
+            width: 50px;
+            font-size: 16px;
+            border: 1px solid #000;
+        }
+    </style>
+    <script>
+        (function(d) {
+            var config = {
+                kitId: 'gyg4pun',
+                scriptTimeout: 3000,
+                async: true
+            },
+            h=d.documentElement,t=setTimeout(function(){h.className=h.className.replace(/\bwf-loading\b/g,"")+" wf-inactive";},config.scriptTimeout),tk=d.createElement("script"),f=false,s=d.getElementsByTagName("script")[0],a;h.className+=" wf-loading";tk.src='https://use.typekit.net/'+config.kitId+'.js';tk.async=true;tk.onload=tk.onreadystatechange=function(){a=this.readyState;if(f||a&&a!="complete"&&a!="loaded")return;f=true;clearTimeout(t);try{Typekit.load(config)}catch(e){}};s.parentNode.insertBefore(tk,s)
+        })(document);
+    </script>
+</head>
+<body>
+    <div id="s">左側：0 - 右側：0</div>
+    <div id="go">スペースキーでスタート</div>
+    <canvas id="c" width="600" height="450"></canvas>
+    <div id="speedControl">
+        <label id="speedLabel" for="speedInput">ボール速度:</label>
+        <input type="number" id="speedInput" value="1.5" min="0.5" max="5" step="0.1">
+    </div>
+    <div id="pm">一時停止中</div>
+
+    <script>
+        const c = document.getElementById('c');
+        const ctx = c.getContext('2d');
+        const se = document.getElementById('s');
+        const goe = document.getElementById('go');
+        const pme = document.getElementById('pm');
+        const speedInput = document.getElementById('speedInput');
+
+        let gs = false;
+        let gp = false;
+        let afId;
+        let ls = 0;
+        let rs = 0;
+        const ws = 11;
+
+        const ph = 80;
+        const pw = 15;
+        let lpy = c.height / 2 - ph / 2;
+        let rpy = c.height / 2 - ph / 2;
+        const ps = 2;
+
+        let bx = c.width / 2;
+        let by = c.height / 2;
+        const br = 10;
+        let bspeed = parseFloat(speedInput.value);
+        let angle = Math.random() * Math.PI / 2 - Math.PI / 4;
+        let bsx = Math.cos(angle) * bspeed * (Math.random() > 0.5 ? 1 : -1);
+        let bsy = Math.sin(angle) * bspeed;
+
+        const keys = {};
+
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ') {
+                if (gs) {
+                    togglePause();
+                } else {
+                    startGame();
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        function movePaddles() {
+            if (!gs || gp) return;
+            if (keys['w'] && lpy > 0) lpy -= ps;
+            if (keys['s'] && lpy < c.height - ph) lpy += ps;
+            if (keys['ArrowUp'] && rpy > 0) rpy -= ps;
+            if (keys['ArrowDown'] && rpy < c.height - ph) rpy += ps;
+        }
+
+        function moveBall() {
+            if (!gs || gp) return;
+            bx += bsx;
+            by += bsy;
+
+            if (by + br > c.height || by - br < 0) bsy *= -1;
+
+            const leftPaddleCollision = bx - br < pw && by + br > lpy && by - br < lpy + ph;
+            const rightPaddleCollision = bx + br > c.width - pw && by + br > rpy && by - br < rpy + ph;
+
+            if (leftPaddleCollision) handlePaddleCollision(0, lpy);
+            if (rightPaddleCollision) handlePaddleCollision(c.width - pw, rpy);
+
+            if (bx - br < 0) goal('right');
+            if (bx + br > c.width) goal('left');
+        }
+
+        function handlePaddleCollision(paddleX, paddleY) {
+            bsx *= -1;
+            const relativeIntersectY = (paddleY + ph / 2) - by;
+            const normalizedRelativeIntersectionY = (relativeIntersectY / (ph / 2));
+            const bounceAngle = normalizedRelativeIntersectionY * Math.PI / 3;
+            const currentSpeed = Math.sqrt(bsx * bsx + bsy * bsy);
+            bsy = Math.sin(bounceAngle) * currentSpeed;
+            bsx = (paddleX === 0 ? 1 : -1) * Math.cos(bounceAngle) * currentSpeed;
+        }
+
+        function goal(player) {
+            player === 'left' ? ls++ : rs++;
+            updateScore();
+            resetBall();
+            goe.textContent = `${player === 'left' ? '左側' : '右側'}の得点`;
+            setTimeout(() => {
+                if (gs) {
+                    goe.textContent = '';
+                } else {
+                    goe.textContent = `${ls > rs ? '左側' : '右側'}の勝ち\nスペースキーでリスタート`;
+                }
+            }, 1500);
+            if (ls >= ws || rs >= ws) endGame();
+        }
+
+        function endGame() {
+            gs = false;
+            goe.textContent = `${ls > rs ? '左側' : '右側'}の勝ち\nスペースキーでリスタート`;
+        }
+
+        function togglePause() {
+            gp = !gp;
+            pme.style.display = gp ? 'block' : 'none';
+            if (!gp && gs) gameLoop();
+        }
+
+        function updateScore() {
+            se.textContent = `左側：${ls} - 右側：${rs}`;
+        }
+
+        function resetBall() {
+            bx = c.width / 2;
+            by = c.height / 2;
+            bspeed = parseFloat(speedInput.value);
+            angle = Math.random() * Math.PI / 2 - Math.PI / 4;
+            bsx = Math.cos(angle) * bspeed * (Math.random() > 0.5 ? 1 : -1);
+            bsy = Math.sin(angle) * bspeed;
+            lpy = c.height / 2 - ph / 2;
+            rpy = c.height / 2 - ph / 2;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, c.width, c.height);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, lpy, pw, ph);
+            ctx.fillRect(c.width - pw, rpy, pw, ph);
+            ctx.beginPath();
+            ctx.arc(bx, by, br, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function gameLoop() {
+            movePaddles();
+            moveBall();
+            draw();
+            if (gs && !gp) afId = requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            if (gs) {
+                goe.textContent = 'リスタートしますか？\nスペースキーを押してください';
+                // スペースキーを押すとリスタートはstartGame関数内で処理されるため、ここでは何もしない
+            } else {
+                resetGame();
+                ls = 0;
+                rs = 0;
+                updateScore();
+                goe.textContent = '';
+                gs = true;
+                gp = false;
+                pme.style.display = 'none';
+                if (afId) cancelAnimationFrame(afId);
+                gameLoop();
+            }
+        }
+
+        function resetGame() {
+            bx = c.width / 2;
+            by = c.height / 2;
+            bspeed = parseFloat(speedInput.value);
+            angle = Math.random() * Math.PI / 2 - Math.PI / 4;
+            bsx = Math.cos(angle) * bspeed * (Math.random() > 0.5 ? 1 : -1);
+            bsy = Math.sin(angle) * bspeed;
+            lpy = c.height / 2 - ph / 2;
+            rpy = c.height / 2 - ph / 2;
+        }
+
+        draw();
+        updateScore();
+        // 初期のメッセージは残す
+    </script>
+</body>
+</html>
